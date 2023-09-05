@@ -330,14 +330,12 @@ module MQTT
         :payload => payload
       )
 
+      queue = qos.zero? ? nil : wait_for_puback(packet.id)
+
       # Send the packet
       res = send_packet(packet)
 
-      return if qos.zero?
-
-      queue = Queue.new
-
-      wait_for_puback packet.id, queue
+      return unless queue
 
       deadline = current_time + @ack_timeout
 
@@ -486,9 +484,9 @@ module MQTT
       Thread.current[:parent].raise(exp)
     end
 
-    def wait_for_puback(id, queue)
+    def wait_for_puback(id)
       @pubacks_semaphore.synchronize do
-        @pubacks[id] = queue
+        @pubacks[id] = Queue.new
       end
     end
 
@@ -501,7 +499,7 @@ module MQTT
         @last_ping_response = current_time
       elsif packet.class == MQTT::Packet::Puback
         @pubacks_semaphore.synchronize do
-          @pubacks[packet.id] << packet
+          @pubacks[packet.id] << packet if @pubacks[packet.id]
         end
       end
       # Ignore all other packets
